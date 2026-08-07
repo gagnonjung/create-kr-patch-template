@@ -2,10 +2,10 @@ mod support;
 
 use std::ops::Range;
 
-use anyhow::{Result, ensure};
+use anyhow::Result as AnyResult;
 use patch_guard::{
     DecodedInstruction, ExpectedWrite, ImageRegion, MachineCodeCheck, MachineCodeProvenance,
-    MachineCodeVerifier, RegionKind, WriteIntent, WritePlan,
+    MachineCodeVerifier, MachineCodeVerifierError, RegionKind, WriteIntent, WritePlan,
 };
 
 use support::run_manifest;
@@ -15,51 +15,60 @@ fn write_plan_cases_match_language_neutral_expectations() {
     run_manifest("write-plan.json", run_write_scenario);
 }
 
-fn run_write_scenario(scenario: &str) -> Result<()> {
+fn run_write_scenario(scenario: &str) -> AnyResult<()> {
     let baseline = [0_u8, 1, 2, 3];
     match scenario {
-        "owned_data_write" => data_plan().apply(&baseline, None).map(|_| ()),
+        "owned_data_write" => data_plan()
+            .apply(&baseline, None)
+            .map(|_| ())
+            .map_err(Into::into),
         "overlapping_writes" => {
             let mut plan = data_plan();
             plan.regions[0].range = 0..4;
             plan.writes
                 .push(write("second", "layout", 2, &[2], &[7], WriteIntent::Data));
-            plan.apply(&baseline, None).map(|_| ())
+            plan.apply(&baseline, None).map(|_| ()).map_err(Into::into)
         }
         "protected_region_write" => {
             let mut plan = data_plan();
             plan.regions[0].kind = RegionKind::Protected;
-            plan.apply(&baseline, None).map(|_| ())
+            plan.apply(&baseline, None).map(|_| ()).map_err(Into::into)
         }
         "wrong_original_bytes" => {
             let mut plan = data_plan();
             plan.writes[0].expected_original = vec![9, 9];
-            plan.apply(&baseline, None).map(|_| ())
+            plan.apply(&baseline, None).map(|_| ()).map_err(Into::into)
         }
         "untracked_final_diff" => {
             let plan = data_plan();
             let mut output = plan.apply(&baseline, None)?;
             output[3] = 9;
-            plan.audit(&baseline, &output, None)
+            plan.audit(&baseline, &output, None).map_err(Into::into)
         }
         "raw_data_in_machine_code" => {
             let mut plan = machine_code_plan();
             plan.writes[0].intent = WriteIntent::Data;
-            plan.apply(&baseline, None).map(|_| ())
+            plan.apply(&baseline, None).map(|_| ()).map_err(Into::into)
         }
-        "machine_code_without_verifier" => machine_code_plan().apply(&baseline, None).map(|_| ()),
+        "machine_code_without_verifier" => machine_code_plan()
+            .apply(&baseline, None)
+            .map(|_| ())
+            .map_err(Into::into),
         "verified_machine_code" => machine_code_plan()
             .apply(&baseline, Some(&FixtureIsaVerifier::exact()))
-            .map(|_| ()),
+            .map(|_| ())
+            .map_err(Into::into),
         "machine_code_decode_gap" => machine_code_plan()
             .apply(&baseline, Some(&FixtureIsaVerifier::with_gap()))
-            .map(|_| ()),
+            .map(|_| ())
+            .map_err(Into::into),
         "machine_code_reassembly_mismatch" => machine_code_plan()
             .apply(
                 &baseline,
                 Some(&FixtureIsaVerifier::with_reassembly_mismatch()),
             )
-            .map(|_| ()),
+            .map(|_| ())
+            .map_err(Into::into),
         other => panic!("unknown write-plan conformance scenario {other}"),
     }
 }
@@ -126,14 +135,28 @@ impl FixtureIsaVerifier {
 }
 
 impl MachineCodeVerifier for FixtureIsaVerifier {
-    fn assemble_source(&self, check: &MachineCodeCheck<'_>) -> Result<Vec<u8>> {
-        ensure!(check.provenance.assembly_source_id == "asm/hook.s");
-        ensure!(check.provenance.isa_profile_id == "fixture-isa-v1");
+    fn assemble_source(
+        &self,
+        check: &MachineCodeCheck<'_>,
+    ) -> Result<Vec<u8>, MachineCodeVerifierError> {
+        if check.provenance.assembly_source_id != "asm/hook.s" {
+            return Err(MachineCodeVerifierError::new("unexpected assembly source"));
+        }
+        if check.provenance.isa_profile_id != "fixture-isa-v1" {
+            return Err(MachineCodeVerifierError::new("unexpected ISA profile"));
+        }
         Ok(vec![0xaa, 0xbb])
     }
 
-    fn disassemble(&self, check: &MachineCodeCheck<'_>) -> Result<Vec<DecodedInstruction>> {
-        ensure!(check.write.replacement == [0xaa, 0xbb]);
+    fn disassemble(
+        &self,
+        check: &MachineCodeCheck<'_>,
+    ) -> Result<Vec<DecodedInstruction>, MachineCodeVerifierError> {
+        if check.write.replacement != [0xaa, 0xbb] {
+            return Err(MachineCodeVerifierError::new(
+                "unexpected replacement bytes",
+            ));
+        }
         Ok(vec![
             DecodedInstruction {
                 offset: 0,
@@ -152,15 +175,17 @@ impl MachineCodeVerifier for FixtureIsaVerifier {
         &self,
         _check: &MachineCodeCheck<'_>,
         instructions: &[DecodedInstruction],
-    ) -> Result<Vec<u8>> {
+    ) -> Result<Vec<u8>, MachineCodeVerifierError> {
         let mut output: Vec<u8> = instructions
             .iter()
             .map(|instruction| match instruction.canonical.as_str() {
                 "fixture_a" => Ok(0xaa),
                 "fixture_b" => Ok(0xbb),
-                canonical => anyhow::bail!("unknown fixture instruction {canonical}"),
+                canonical => Err(MachineCodeVerifierError::new(format!(
+                    "unknown fixture instruction {canonical}"
+                ))),
             })
-            .collect::<Result<_>>()?;
+            .collect::<Result<_, _>>()?;
         if self.reassembly_mismatch {
             output[1] ^= 0xff;
         }
@@ -179,7 +204,7 @@ fn region(id: &str, range: Range<usize>, kind: RegionKind) -> ImageRegion {
 
 fn write(
     id: &str,
-    actor: &str,
+    owner: &str,
     offset: usize,
     expected_original: &[u8],
     replacement: &[u8],
@@ -187,7 +212,7 @@ fn write(
 ) -> ExpectedWrite {
     ExpectedWrite {
         id: id.to_owned(),
-        actor: actor.to_owned(),
+        owner: owner.to_owned(),
         purpose: "conformance fixture".to_owned(),
         offset,
         expected_original: expected_original.to_vec(),

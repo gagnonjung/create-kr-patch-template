@@ -8,6 +8,7 @@ rust-version.workspace = true
 
 [dependencies]
 anyhow.workspace = true
+expected-write.workspace = true
 sha2.workspace = true
 
 [dev-dependencies]

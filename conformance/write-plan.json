@@ -5,13 +5,13 @@
       "id": "owned-data-write",
       "scenario": "owned_data_write",
       "expected": "accept",
-      "given": "one data write has one actor, an exact original-byte precondition, and one matching data region"
+      "given": "one data write has one owner, an exact original-byte precondition, and one matching data region"
     },
     {
       "id": "overlapping-writes",
       "scenario": "overlapping_writes",
       "expected": "reject",
-      "given": "two writes overlap even though they name the same actor"
+      "given": "two writes overlap even though they name the same owner"
     },
     {
       "id": "protected-region-write",

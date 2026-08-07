@@ -21,6 +21,10 @@
 emucap을 선택하면 [`adapters/emucap/`](adapters/emucap/)의 연결 규칙을
 적용한다.
 
+Rust 제품 빌드에서 기계어를 생성하거나 옮길 때 `retro-typed-isa`를
+선택하면 [`adapters/retro-typed-isa/`](adapters/retro-typed-isa/)의 연결
+규칙을 적용한다.
+
 ## 참고 구현 확인
 
 ```bash
