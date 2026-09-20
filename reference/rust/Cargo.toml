@@ -1,19 +1,19 @@
-[workspace]
-members = ["crates/patch-guard"]
-resolver = "3"
-
-[workspace.package]
+[package]
+name = "patch-guard"
+description = "Platform-neutral validation guards for reproducible binary patch builds"
 version = "0.4.0"
 edition = "2024"
 license = "MIT"
 rust-version = "1.85"
 
-[workspace.dependencies]
+[dependencies]
 anyhow = "1"
 expected-write = { git = "https://github.com/mcpads/retro-typed-isa" }
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
 sha2 = "0.10"
 
-[workspace.lints.clippy]
+[dev-dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[lints.clippy]
 all = "warn"

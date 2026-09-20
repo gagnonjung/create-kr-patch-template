@@ -25,7 +25,3 @@ pub fn verify_exact_roundtrip(boundary_id: &str, original: &[u8], rebuilt: &[u8]
 
     Ok(())
 }
-
-#[cfg(test)]
-#[path = "roundtrip_tests.rs"]
-mod tests;
