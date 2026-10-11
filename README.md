@@ -24,3 +24,14 @@ cargo fmt --all -- --check
 cargo clippy --locked --all-targets --all-features -- -D warnings
 cargo test --locked
 ```
+
+## Sega Saturn CPK 특별 형식 QA
+
+Sega FILM/Cinepak 영상에서 정렬/코드북/PCM 보존 문제가 발견되면 [조건부 기술 명세](config/sega-saturn-film-cinepak.md)를 참고한다. [정적 검사기](adapters/sega-film-cpk/README.md)는 원본에서 **4바이트 정렬, 두 바이트 Sega 확장, 프레임 선언 크기 편차 8** 등의 패턴이 확인된 경우에만 사용할 수 있다.
+
+```bash
+python3 adapters/sega-film-cpk/validate_cpk.py --self-test
+python3 adapters/sega-film-cpk/validate_cpk.py output.CPK --original verified_source.CPK
+```
+
+원본과 다른 CPK 변형에 위 값을 무조건 적용하지 않는다. 정적 QA 성공은 실제 기기/에뮬레이터 재생 성공을 보장하지 않는다.
